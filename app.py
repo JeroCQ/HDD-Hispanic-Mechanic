@@ -37,28 +37,39 @@ if not google_key:
     st.stop()
 
 # 3. BASE DE DATOS VECTORIAL
-@st.cache_resource
-def inicializar_base_datos_briosos():
-    documentos_briosos = [
-        "Filosofía Briosos: Un hombre solo podrá ser libre cuando alcance el dominio de sí mismo. El fin es impulsar el éxito construyendo un carácter resuelto y enérgico, aportando estructura y simplicidad.",
-        "Herramienta - Constructor de Hábitos: Cambiará tu vida. Registra y verifica qué tan consistente eres. Filosofía: 'Lo que no se mide no se puede mejorar'. Úsalo para trackear disciplinas innegociables diariamente.",
-        "Herramienta - Planeador Diario: El tiempo es el activo más escaso. Estructura tu día 15 minutos antes de ir a dormir. Al hacer esto el día anterior, eliminas la fatiga de decisión y te levantas con un mapa de acción claro.",
-        "Herramienta - Planeador Semanal: Todos los días no son iguales. Agrupa tareas por temática en distintos días de la semana (ej: Lunes de finanzas, Martes de contenido) para mantener foco profundo y evitar el desgaste.",
-        "Producto - Creatina Old School: Fuerza y recuperación pura. Rinde por 2 meses, 5gr por porción. Precio: $110.000 COP. Envío gratis a Medellín y alrededores. Compra directa haciendo clic en el botón de WhatsApp de la web.",
-        "Producto - Creatina en Gomitas: Rendimiento y practicidad. Rinde 30 días, la porción de 5gr son 4 gomitas. Precio: $140.000 COP. Envío gratis a Medellín y alrededores. Compra directa por WhatsApp.",
-        "Producto - Aminoácidos Esenciales: Optimiza la síntesis de proteína y frena el catabolismo. Rinde 30 días, 15gr por día. Precio: $100.000 COP. Envío gratis a Medellín. Compra por WhatsApp.",
-        "Comunidad - La Tribu de BRIOSOS: Red de contactos para hombres que valoran tu tiempo y esfuerzo. Acceso al grupo mediante el botón de la Tribu en la web."
-    ]
+# 3. BASE DE DATOS VECTORIAL (ACTUALIZADA)
+@st.cache_resource(show_spinner=True)
+def inicializar_base_datos_briosos(google_key):
+    # EL MODELO CORRECTO ES: text-embedding-004
+    try:
+        documentos_briosos = [
+            "Filosofía Briosos: Un hombre solo podrá ser libre cuando alcance el dominio de sí mismo. El fin es impulsar el éxito construyendo un carácter resuelto y enérgico, aportando estructura y simplicidad.",
+            "Herramienta - Constructor de Hábitos: Cambiará tu vida. Registra y verifica qué tan consistente eres. Filosofía: 'Lo que no se mide no se puede mejorar'. Úsalo para trackear disciplinas innegociables diariamente.",
+            "Herramienta - Planeador Diario: El tiempo es el activo más escaso. Estructura tu día 15 minutos antes de ir a dormir. Al hacer esto el día anterior, eliminas la fatiga de decisión y te levantas con un mapa de acción claro.",
+            "Herramienta - Planeador Semanal: Todos los días no son iguales. Agrupa tareas por temática en distintos días de la semana (ej: Lunes de finanzas, Martes de contenido) para mantener foco profundo y evitar el desgaste.",
+            "Producto - Creatina Old School: Fuerza y recuperación pura. Rinde por 2 meses, 5gr por porción. Precio: $110.000 COP. Envío gratis a Medellín y alrededores. Compra directa haciendo clic en el botón de WhatsApp de la web.",
+            "Producto - Creatina en Gomitas: Rendimiento y practicidad. Rinde 30 días, la porción de 5gr son 4 gomitas. Precio: $140.000 COP. Envío gratis a Medellín y alrededores. Compra directa por WhatsApp.",
+            "Producto - Aminoácidos Esenciales: Optimiza la síntesis de proteína y frena el catabolismo. Rinde 30 días, 15gr por día. Precio: $100.000 COP. Envío gratis a Medellín. Compra por WhatsApp.",
+            "Comunidad - La Tribu de BRIOSOS: Red de contactos para hombres que valoran tu tiempo y esfuerzo. Acceso al grupo mediante el botón de la Tribu en la web."
+        ]
+        
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
+        docs = text_splitter.create_documents(documentos_briosos)
+        
+        # MODELO CORREGIDO AQUÍ
+        embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=google_key)
+        
+        vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
+        return vector_store.as_retriever(search_kwargs={"k": 2})
+    except Exception as e:
+        st.error(f"Error al conectar con Gemini: {e}")
+        return None
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
-    docs = text_splitter.create_documents(documentos_briosos)
-
-    # Aquí también se corrigió el nombre de la clase
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2", google_api_key=google_key)
-    vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
-    return vector_store.as_retriever(search_kwargs={"k": 2})
-
-retriever = inicializar_base_datos_briosos()
+# --- LLAMADA EN EL MAIN ---
+if google_key:
+    retriever = inicializar_base_datos_briosos(google_key)
+    if retriever is None:
+        st.stop() # Detiene la app si la inicialización falló
 
 # 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE
 @tool
