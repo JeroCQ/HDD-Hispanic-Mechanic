@@ -7,14 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1pX_MqkBVPX85D5RCv8awg-ujUjVaPek2
 """
 
-# 1. Borramos TODO rastro de versiones viejas o corruptas
-!pip uninstall -y langchain langchain-core langchain-community langchain-google-genai langgraph
 
-# 2. Instalamos todo desde cero en su versión más reciente y estable
-!pip install -U langchain-google-genai langchain langchain-community langgraph chromadb streamlit pydantic
-
-# 3. Instalamos localtunnel
-!npm install -g localtunnel
 
 # Commented out IPython magic to ensure Python compatibility.
 # %%writefile app.py
