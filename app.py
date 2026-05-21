@@ -7,10 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1pX_MqkBVPX85D5RCv8awg-ujUjVaPek2
 """
 
-
-
-# Commented out IPython magic to ensure Python compatibility.
-%%writefile app.py
 # Guarda este código con los nombres CORRECTOS en 'app.py'
 
 import os
