@@ -121,13 +121,3 @@ Original file is located at
 #             final_response = output["messages"][-1].content
 #             st.write(final_response)
 #             st.session_state.chat_history.append(AIMessage(content=final_response))
-
-# 1. Esto generará una contraseña de seguridad de 4 números. CÓPIALA.
-import urllib
-print("Tu Contraseña de Seguridad es:", urllib.request.urlopen('https://ipv4.icanhazip.com').read().decode('utf8').strip("\n"))
-
-# 2. Arranca el código de la interfaz en segundo plano
-!streamlit run app.py &>/content/logs.txt &
-
-# 3. Te genera el link público para entrar a ver tu aplicación
-!npx localtunnel --port 8501
