@@ -18,7 +18,7 @@ from langchain_core.tools import tool
 # EL NOMBRE REAL: ChatGoogleGenerativeAI y GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
-from langchain_community.vectorstores import Chroma
+from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -55,7 +55,7 @@ def inicializar_base_datos_briosos():
 
     # Aquí también se corrigió el nombre de la clase
     embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-2", google_api_key=google_key)
-    vector_store = Chroma.from_documents(docs, embeddings)
+    vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
     return vector_store.as_retriever(search_kwargs={"k": 2})
 
 retriever = inicializar_base_datos_briosos()
