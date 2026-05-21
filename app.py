@@ -57,7 +57,7 @@ def inicializar_base_datos_briosos(google_key):
         docs = text_splitter.create_documents(documentos_briosos)
         
         # MODELO CORREGIDO AQUÍ
-        embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=google_key)
+        embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-001", google_api_key=google_key)
         
         vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
         return vector_store.as_retriever(search_kwargs={"k": 2})
@@ -86,7 +86,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 # Aquí también se corrigió el nombre de la clase
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3, google_api_key=google_key).bind_tools(tools)
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3, google_api_key=google_key).bind_tools(tools)
 
 def call_model(state: AgentState):
     response = llm.invoke(state["messages"])
