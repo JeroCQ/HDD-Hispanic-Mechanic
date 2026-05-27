@@ -128,6 +128,11 @@ if user_input := st.chat_input("Ej: ¿Cómo organizo mi día con el planeador o 
         with st.spinner("Pensando como un hombre de propósito..."):
             inputs = {"messages": st.session_state.chat_history}
             output = agentic_graph.invoke(inputs)
-            final_response = output["messages"][-1].content
+            raw_content = output["messages"][-1].content
+            # Verificamos si LangChain nos devolvió una lista compleja o un texto directo
+            if isinstance(raw_content, list):
+                final_response = raw_content[0].get("text", "")
+            else:
+                final_response = raw_content
             st.write(final_response)
             st.session_state.chat_history.append(AIMessage(content=final_response))
