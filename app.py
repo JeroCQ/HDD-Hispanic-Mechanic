@@ -56,8 +56,11 @@ def inicializar_base_datos_briosos(google_key):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
         docs = text_splitter.create_documents(documentos_briosos)
         
-        # MODELO CORREGIDO AQUÍ
-        embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004", google_api_key=google_key)
+        # MODELO ACTUALIZADO
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model="gemini-embedding-2-preview", 
+            google_api_key=google_key
+        )
         
         vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
         return vector_store.as_retriever(search_kwargs={"k": 2})
