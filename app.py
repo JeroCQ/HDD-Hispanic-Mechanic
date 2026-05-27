@@ -89,7 +89,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 # Aquí también se corrigió el nombre de la clase
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", temperature=0.3, google_api_key=google_key).bind_tools(tools)
+llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3, google_api_key=google_key).bind_tools(tools)
 
 def call_model(state: AgentState):
     response = llm.invoke(state["messages"])
