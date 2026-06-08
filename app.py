@@ -9,6 +9,29 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
+from langchain_core.messages import SystemMessage
+
+# Define tu System Prompt de forma global o en un archivo de configuración separado (.env o config.yaml)
+INSTRUCCION_MAESTRA = """
+Eres un Ingeniero de Soporte Técnico Senior especializado en maquinaria HDD (Ditch Witch y Vermeer).
+Reglas de operación:
+1. Responde de forma hiper-estructurada, directa y sin saludos motivacionales.
+2. Si el usuario te habla en Spanglish de campo (ej. 'remer', 'drill rod'), mapea el término al inglés técnico.
+3. SIEMPRE basa tu diagnóstico en los manuales recuperados. Si la respuesta no está en el contexto, responde: "Dato no disponible en los manuales cargados. Contacte a soporte de fábrica."
+4. Cita las especificaciones de torque o presión con absoluta precisión.
+5. Termina con preguntas clave que sean necesarias o que te ayuden a responder mejor, especificando porqué esta información es relevante.
+
+"""
+
+def call_model(state: AgentState):
+    messages = state["messages"]
+    
+    # Verificamos si el SystemMessage ya está en el historial para no duplicarlo
+    if not isinstance(messages[0], SystemMessage):
+        messages = [SystemMessage(content=INSTRUCCION_MAESTRA)] + messages
+        
+    response = llm.invoke(messages)
+    return {"messages": [response]}
 
 # 1. CONFIGURACIÓN VISUAL B2B INDUSTRIAL
 st.set_page_config(page_title="Asistente Técnico HDD", layout="centered")
