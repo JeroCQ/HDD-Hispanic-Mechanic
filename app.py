@@ -145,7 +145,7 @@ Reglas de operación obligatorias:
 
 # Al pasar INSTRUCCION_MAESTRA aquí, Gemini la procesa de forma nativa y segura
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", 
+    model="gemini-3.5-flash", 
     temperature=0.1, 
     google_api_key=GOOGLE_KEY,
     system_instruction=INSTRUCCION_MAESTRA
