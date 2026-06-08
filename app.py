@@ -168,7 +168,12 @@ agentic_graph = workflow.compile()
 
 # 6. ENTORNO DE CONVERSACIÓN INTERACTIVO
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = [AIMessage(content="Sistema en línea conectado a Supabase. ¿Qué código de error o falla mecánica presenta el equipo?")]
+    st.session_state.chat_history = []
+
+# Saludo visual (NO se envía al historial de Gemini)
+if len(st.session_state.chat_history) == 0:
+    with st.chat_message("assistant"):
+        st.write("Sistema en línea conectado a Supabase. ¿Qué código de error o falla mecánica presenta el equipo?")
 
 for message in st.session_state.chat_history:
     if isinstance(message, SystemMessage):
