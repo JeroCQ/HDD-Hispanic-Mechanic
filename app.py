@@ -64,7 +64,7 @@ def inicializar_base_datos_hdd(api_key):
         docs = text_splitter.create_documents(documentos_tecnicos)
         
         embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004", 
+            model="models/text-embedding-001", 
             google_api_key=api_key
         )
         
