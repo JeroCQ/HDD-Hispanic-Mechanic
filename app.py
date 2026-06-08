@@ -1,114 +1,154 @@
 import os
 import streamlit as st
 from typing import Annotated, Sequence, TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from supabase import create_client, Client
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
-
-# EL NOMBRE REAL: ChatGoogleGenerativeAI y GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-
-from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
+import tempfile
 
-# 1. CONFIGURACIÓN VISUAL
-st.set_page_config(page_title="Mecánico", layout="centered")
-st.title("⚡ Mecánico: Ditch Witch & Vermeer")
-st.caption("Cuál es el problema? | Especifíca las caracteristicas de la máquina")
+# 1. CONFIGURACIÓN VISUAL DE LA APP
+st.set_page_config(page_title="Mecánico HDD", layout="centered")
 
-# 2. VALIDACIÓN DE CREDENCIALES
-google_key = os.environ.get("GEMINI_API_KEY") or st.sidebar.text_input("Ingresa tu Gemini API Key", type="password")
+# ==========================================
+# 2. CREDENCIALES COMPARTIDAS (TODO ONLINE)
+# ==========================================
+# Cuando despliegues en Streamlit Cloud, estas variables se configuran en "Secrets"
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or st.sidebar.text_input("Supabase URL", type="default")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or st.sidebar.text_input("Supabase Anon Key", type="password")
+GOOGLE_KEY = os.environ.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key", type="password")
 
-if not google_key:
-    st.info("Por favor, ingresa tu API Key de Gemini en la barra lateral para activar al Coach.")
+if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
+    st.info("⚠️ Por favor, ingresa las credenciales requeridas en la barra lateral para activar el sistema.")
     st.stop()
 
-# 3. BASE DE DATOS VECTORIAL
-# 3. BASE DE DATOS VECTORIAL (ACTUALIZADA)
-@st.cache_resource(show_spinner=True)
-def inicializar_base_datos(google_key):
-    # EL MODELO CORRECTO ES: text-embedding-004
-    try:
-        documentos = [
-            # SISTEMAS HIDRÁULICOS Y MECÁNICOS (DITCH WITCH / VERMEER)
-            "Falla de Empuje en Ditch Witch (Thrust Pressure): Si la máquina pierde fuerza de empuje de forma súbita y la pantalla reporta un código de falla hidráulica en la bomba auxiliar, indica una caída de presión crítica en el circuito auxiliar. Solución inmediata: Inspeccionar la válvula de alivio situada en el bloque colector izquierdo (left manifold block). Verificar si el solenoide Y4 recibe señal eléctrica de la ECU. El torque de reajuste oficial para esta válvula es de 35 lb-ft (47 N·m).",
-            
-            "Desgaste de Mordazas y Prensa-Barras: Para evitar el deslizamiento de la columna de perforación durante el avance o el backreaming, el grosor de los dientes de las mordazas del prensa-barras (slip jaws) debe revisarse cada 50 horas de operación. Si el desgaste supera el límite de tolerancia física del 20%, se debe suspender la operación. El torque de apriete (makeup torque) en las roscas de las barras (drill rods) debe respetar estrictamente los límites del fabricante para evitar el estiramiento y fractura del metal.",
-            
-            # INGENIERÍA DE FLUIDOS Y DISEÑO DE LODOS DE PERFORACIÓN
-            "Fluidos para Terrenos de Arena Suelta (Running Sand): Las formaciones de arena húmeda o inestable tienden a colapsar el pozo piloto y causar pérdida de retorno del lodo de perforación. Protocolo de contingencia: Detener el avance mecánico inmediatamente. Por cada 1,000 galones de agua en el tanque de mezcla, dosificar entre 35 y 40 libras de bentonita de alta producción (Premium Gel) para sellar las paredes del hueco, combinado con 1 a 2 cuartos de galón de polímero líquido (SUSPEND-IT) para levantar la arena pesada. La viscosidad medida en el Embudo Marsh debe mantenerse estrictamente en un rango de 48 a 52 segundos antes de reanudar la rotación.",
-            
-            "Fluidos para Terrenos de Arcilla Reactiva (Sticky Clay): Las arcillas plásticas absorben el agua del lodo, se expanden y se pegan a la cabeza de perforación o al reamer, causando bloqueos por torque alto. Protocolo de dosificación: Mezclar por cada 1,000 galones de agua de 15 a 25 libras de bentonita para control de filtración, añadiendo 1 galón de inhibidor de arcilla (CON-DET o similar) para humectar y evitar el embolamiento (bit balling). Mantener la viscosidad Marsh baja, entre 34 y 38 segundos, para facilitar el flujo de retorno hacia el pozo de entrada.",
-            
-            # SEGURIDAD CRÍTICA Y SISTEMAS ELECTRÓNICOS DE CAMPO
-            "Sistema de Alerta Eléctrica Strike Alert / ESAS: Si la luz roja se enciende de forma intermitente acompañada de una alarma sonora continua tras haber hincado las estacas de tierra en terreno húmedo, el sistema indica una falla de autocomprobación por alta resistencia a tierra (impedancia superior a 100 ohmios). Protocolo de diagnóstico seguro: Apagar el motor de perforación, limpiar los terminales de los cables de prueba conectados a las estacas para remover óxido o lodo seco, y verificar que el aislamiento del cable principal que conecta al chasis no presente grietas ni cortes. Presionar el botón 'Test' durante 3 segundos para realizar el aislamiento manual antes de reanudar operaciones.",
-            
-            "Localización y Sistemas de Guía (Walkover Tracking): Las interferencias pasivas (estructuras metálicas, concreto reforzado) o activas (líneas de alta tensión enterradas) descalibran la lectura de profundidad y pendiente de la sonda (sonde/beacon) alojada en la cabeza de perforación. Antes de iniciar el cruce, es obligatorio realizar una calibración de fondo (Roll-Ahead Calibration) a una distancia de 10 pies (3 metros) del receptor y verificar la intensidad de la señal en los ejes X e Y para evitar desviaciones del perfil de diseño del pozo."
-        ]
-        
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=30)
-        docs = text_splitter.create_documents(documentos)
-        
-        # MODELO ACTUALIZADO
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="gemini-embedding-2-preview", 
-            google_api_key=google_key
-        )
-        
-        vector_store = InMemoryVectorStore.from_documents(docs, embeddings)
-        return vector_store.as_retriever(search_kwargs={"k": 2})
-    except Exception as e:
-        st.error(f"Error al conectar con Gemini: {e}")
-        return None
+# Inicialización de clientes online
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GOOGLE_KEY)
 
-# --- LLAMADA EN EL MAIN ---
-if google_key:
-    retriever = inicializar_base_datos(google_key)
-    if retriever is None:
-        st.stop() # Detiene la app si la inicialización falló
+# ==========================================
+# 3. PANELES DE LA INTERFAZ (CHAT vs ADMIN)
+# ==========================================
+modo = st.sidebar.radio("Selecciona el Panel:", ["🤖 Copiloto de Campo (Chat)", "⚙️ Administrador (Cargar Manuales)"])
 
-# 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE
+# ------------------------------------------
+# PANEL DE ADMINISTRADOR: INGESTA 100% WEB
+# ------------------------------------------
+if modo == "⚙️ Administrador (Cargar Manuales)":
+    st.title("⚙️ Centro de Control de Conocimiento")
+    st.subheader("Nutre al agente subiendo nuevos manuales técnicos en PDF")
+    
+    marca = st.selectbox("Marca del equipo o categoría:", ["Ditch Witch", "Vermeer", "Fluidos/Lodos", "Seguridad/Sistemas"])
+    archivo_subido = st.file_uploader("Arrastra aquí el manual en formato PDF", type=["pdf"])
+    
+    if archivo_subido is not None:
+        if st.button("🚀 Procesar y Alimentar Base de Datos"):
+            with st.spinner("Procesando PDF, fragmentando y generando embeddings con Gemini..."):
+                try:
+                    # Guardar el archivo subido en un directorio temporal online para que LangChain lo pueda leer
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(archivo_subido.getvalue())
+                        tmp_ruta = tmp_file.name
+
+                    # 1. Extraer texto del PDF
+                    loader = PyPDFLoader(tmp_ruta)
+                    paginas = loader.load()
+                    
+                    # 2. Chunking Semántico optimizado para datos de ingeniería
+                    text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
+                    chunks = text_splitter.split_documents(paginas)
+                    
+                    progreso = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # 3. Vectorización y carga online fila por fila a Supabase
+                    for i, chunk in enumerate(chunks):
+                        texto_limpio = chunk.page_content
+                        num_pagina = chunk.metadata.get("page", 0) + 1
+                        
+                        # Generar coordenadas matemáticas con Gemini
+                        vector = embeddings.embed_query(texto_limpio)
+                        
+                        # Guardar directo en la tabla que creamos en Supabase
+                        datos_fila = {
+                            "contenido": texto_limpio,
+                            "embedding": vector,
+                            "metadata": {
+                                "fuente": archivo_subido.name,
+                                "pagina": num_pagina,
+                                "marca": marca
+                            }
+                        }
+                        supabase.table("documentos_hdd").insert(datos_fila).execute()
+                        
+                        # Actualizar barra de progreso visual en la web
+                        porcentaje = int((i + 1) / len(chunks) * 100)
+                        progreso.progress(porcentaje)
+                        status_text.text(f"Subiendo fragmento {i+1} de {len(chunks)} (Pág. {num_pagina})")
+                    
+                    st.success(f"🏁 ¡Éxito! El manual '{archivo_subido.name}' fue fragmentado en {len(chunks)} partes y guardado permanentemente en la nube.")
+                    os.unlink(tmp_ruta) # Limpiar archivo temporal
+                    
+                except Exception as e:
+                    st.error(f"Error crítico durante el procesamiento: {e}")
+    st.stop() # Detiene la ejecución aquí si estás en modo admin
+
+# ------------------------------------------
+# PANEL DE USUARIO: COPILOTO INTELIGENTE RAG
+# ------------------------------------------
+st.title("🚜 Mecánico Experto: Ditch Witch & Vermeer")
+st.caption("Resolución de crisis mecánicas e ingeniería de fluidos en tiempo real.")
+
+# 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE (CONECTADA A SUPABASE ONLINE)
 @tool
-def buscar_en_base_de_datos(query: str) -> str:
-    """Busca información en la base de datos sobre procedimientos de diagnóstico y soluciones."""
-    docs = retriever.invoke(query)
-    return "\n\n".join([doc.page_content for doc in docs])
+def buscar_en_manuales_supabase(query: str) -> str:
+    """Busca especificaciones exactas, torques y soluciones directamente en la base de datos de Supabase en la nube."""
+    try:
+        # Convertimos la pregunta del operador en un vector usando Gemini
+        query_vector = embeddings.embed_query(query)
+        
+        # Llamamos a la función matemática 'buscar_documentos' que creamos en el Paso 4 de Supabase
+        respuesta_db = supabase.rpc(
+            "buscar_documentos", 
+            {"query_embedding": query_vector, "match_threshold": 0.4, "match_count": 3}
+        ).execute()
+        
+        if not respuesta_db.data:
+            return "No se encontraron registros coincidentes en los manuales de la base de datos."
+            
+        # Unimos los fragmentos encontrados para pasárselos como contexto al LLM
+        fragmentos = [row["contenido"] for row in respuesta_db.data]
+        return "\n\n".join(fragmentos)
+    except Exception as e:
+        return f"Error al buscar en la base de datos en la nube: {e}"
 
-tools = [buscar_en_base_de_datos]
+tools = [buscar_en_manuales_supabase]
 tool_node = ToolNode(tools)
 
-# 5. ARQUITECTURA DE CONTROL (LangGraph)
+# 5. ORQUESTACIÓN CON LANGGRAPH
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-from langchain_core.messages import SystemMessage
-
-# Define tu System Prompt de forma global o en un archivo de configuración separado (.env o config.yaml)
 INSTRUCCION_MAESTRA = """
 Eres un Ingeniero de Soporte Técnico Senior especializado en maquinaria HDD (Ditch Witch y Vermeer).
-Reglas de operación:
-1. Responde de forma hiper-estructurada, directa y sin saludos motivacionales.
-2. Si el usuario te habla en Spanglish de campo (ej. 'remer', 'drill rod'), mapea el término al inglés técnico.
-3. SIEMPRE basa tu diagnóstico en los manuales recuperados. Si la respuesta no está en el contexto, responde: "Dato no disponible en los manuales cargados. Contacte a soporte de fábrica."
-4. Cita las especificaciones de torque o presión con absoluta precisión.
+Reglas de operación obligatorias:
+1. Responde de forma hiper-estructurada, directa y sin saludos corteses ni introducciones motivacionales.
+2. Si el usuario te habla en Spanglish de campo (ej. 'remer', 'drill rod', 'mordazas'), mapea internamente el término al inglés técnico.
+3. SIEMPRE basa tu diagnóstico en los fragmentos recuperados mediante tu herramienta de búsqueda. Si la respuesta no está en el contexto provisto por la herramienta, responde estrictamente: "Dato no disponible en los manuales cargados. Contacte a soporte de fábrica."
+4. Cita las especificaciones de torque, presión, ohmios o dosificación de fluidos con absoluta precisión matemática.
 """
 
-# Aquí también se corrigió el nombre de la clase
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3, google_api_key=google_key).bind_tools(tools)
-
-#def call_model(state: AgentState):
- #   response = llm.invoke(state["messages"])
-  #  return {"messages": [response]}
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, google_api_key=GOOGLE_KEY).bind_tools(tools)
 
 def call_model(state: AgentState):
     messages = state["messages"]
-    
-    # Verificamos si el SystemMessage ya está en el historial para no duplicarlo
-    if not isinstance(messages[0], SystemMessage):
+    if not any(isinstance(m, SystemMessage) for m in messages):
         messages = [SystemMessage(content=INSTRUCCION_MAESTRA)] + messages
-        
     response = llm.invoke(messages)
     return {"messages": [response]}
 
@@ -121,35 +161,33 @@ def router_logic(state: AgentState):
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_node("tools", tool_node)
-
 workflow.add_edge(START, "agent")
 workflow.add_conditional_edges("agent", router_logic, {"execute_tools": "tools", END: END})
 workflow.add_edge("tools", "agent")
-
 agentic_graph = workflow.compile()
 
-# 6. ENTORNO DE CONVERSACIÓN
+# 6. ENTORNO DE CONVERSACIÓN INTERACTIVO
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = [AIMessage(content="Bienvenido. Sé todo sobre la mecánica de las perforadosras. ¿Qué problema tienes?")]
+    st.session_state.chat_history = [AIMessage(content="Sistema en línea conectado a Supabase. ¿Qué código de error o falla mecánica presenta el equipo?")]
 
 for message in st.session_state.chat_history:
+    if isinstance(message, SystemMessage):
+        continue
     with st.chat_message("user" if isinstance(message, HumanMessage) else "assistant"):
         st.write(message.content)
 
-if user_input := st.chat_input("Ej: ¿Cómo calibro mi máquina?"):
+if user_input := st.chat_input("Ej: perdi fuerza de empuje en mi ditch witch"):
     st.session_state.chat_history.append(HumanMessage(content=user_input))
     with st.chat_message("user"):
         st.write(user_input)
 
     with st.chat_message("assistant"):
-        with st.spinner("Pensando ..."):
+        with st.spinner("Consultando base de datos vectorial en la nube..."):
             inputs = {"messages": st.session_state.chat_history}
             output = agentic_graph.invoke(inputs)
+            
+            st.session_state.chat_history = output["messages"]
             raw_content = output["messages"][-1].content
-            # Verificamos si LangChain nos devolvió una lista compleja o un texto directo
-            if isinstance(raw_content, list):
-                final_response = raw_content[0].get("text", "")
-            else:
-                final_response = raw_content
+            
+            final_response = raw_content[0].get("text", "") if isinstance(raw_content, list) else raw_content
             st.write(final_response)
-            st.session_state.chat_history.append(AIMessage(content=final_response))
