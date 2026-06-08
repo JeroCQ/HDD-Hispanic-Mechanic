@@ -29,7 +29,7 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
 
 # Inicialización de clientes online
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GOOGLE_KEY)
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=GOOGLE_KEY)
 
 # ==========================================
 # 3. PANELES DE LA INTERFAZ (CHAT vs ADMIN)
