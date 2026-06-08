@@ -71,30 +71,65 @@ if uploaded_file is not None:
         
         try:
             # --- FASE 1: Leer el archivo ---
-            estado_texto.text("Extracting texto del PDF...")
-            barra_progreso.progress(25)
+            estado_texto.text("Extrayendo texto del PDF...")
+            barra_progreso.progress(10)
             
-            # Aquí se invoca tu función de procesamiento (ej: procesar_pdf(uploaded_file))
-            # [Tu lógica de PyPDFLoader / RecursiveCharacterTextSplitter]
+            # Guardamos el archivo subido de Streamlit en un archivo temporal real del servidor
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_file_path = tmp_file.name
+            
+            # Usamos LangChain para leer el PDF
+            loader = PyPDFLoader(tmp_file_path)
+            documentos = loader.load()
+            
+            estado_texto.text("Dividiendo en fragmentos (Chunking)...")
+            barra_progreso.progress(30)
+            
+            # Cortamos el documento en pedazos de 1000 caracteres
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+            chunks = text_splitter.split_documents(documentos)
             
             # --- FASE 2: Generar Embeddings ---
-            estado_texto.text("Generando embeddings (768 dimensiones)...")
+            estado_texto.text(f"Vectorizando {len(chunks)} fragmentos...")
             barra_progreso.progress(60)
             
+            # Extraemos solo el texto para enviarlo a Gemini
+            textos = [chunk.page_content for chunk in chunks]
+            metadatos = [chunk.metadata for chunk in chunks]
+            
+            # Usamos embed_documents para procesar TODOS los fragmentos en una sola llamada (Evita el Rate Limit)
+            vectores = embeddings.embed_documents(textos)
+            
             # --- FASE 3: Almacenamiento ---
-            estado_texto.text("Subiendo vectores a Supabase (documentos_hdd)...")
-            barra_progreso.progress(90)
+            estado_texto.text("Subiendo a Supabase...")
+            barra_progreso.progress(85)
+            
+            # Empaquetamos todo para Supabase
+            datos_a_insertar = []
+            for i in range(len(chunks)):
+                datos_a_insertar.append({
+                    "contenido": textos[i],
+                    "embedding": vectores[i],
+                    "metadata": metadatos[i]
+                })
+            
+            # Inserción masiva en la base de datos
+            supabase.table("documentos_hdd").insert(datos_a_insertar).execute()
+            
+            # Borramos el archivo temporal por limpieza
+            os.remove(tmp_file_path)
             
             # Éxito total
             barra_progreso.progress(100)
             estado_texto.empty()
-            st.sidebar.success("✅ ¡Manual indexado con éxito en la base de datos!")
+            st.sidebar.success(f"✅ ¡{len(chunks)} fragmentos indexados con éxito!")
             
         except Exception as e:
             barra_progreso.empty()
             estado_texto.empty()
             st.sidebar.error(f"❌ Error crítico durante el procesamiento: {str(e)}")
-
+            
 # 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE (CONECTADA A SUPABASE ONLINE)
 @tool
 def buscar_en_manuales_supabase(query: str) -> str:
