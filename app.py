@@ -83,11 +83,33 @@ tool_node = ToolNode(tools)
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
+from langchain_core.messages import SystemMessage
+
+# Define tu System Prompt de forma global o en un archivo de configuración separado (.env o config.yaml)
+INSTRUCCION_MAESTRA = """
+Eres un Ingeniero de Soporte Técnico Senior especializado en maquinaria HDD (Ditch Witch y Vermeer).
+Reglas de operación:
+1. Responde de forma hiper-estructurada, directa y sin saludos motivacionales.
+2. Si el usuario te habla en Spanglish de campo (ej. 'remer', 'drill rod'), mapea el término al inglés técnico.
+3. SIEMPRE basa tu diagnóstico en los manuales recuperados. Si la respuesta no está en el contexto, responde: "Dato no disponible en los manuales cargados. Contacte a soporte de fábrica."
+4. Cita las especificaciones de torque o presión con absoluta precisión.
+"""
+
 # Aquí también se corrigió el nombre de la clase
 llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3, google_api_key=google_key).bind_tools(tools)
 
+#def call_model(state: AgentState):
+ #   response = llm.invoke(state["messages"])
+  #  return {"messages": [response]}
+
 def call_model(state: AgentState):
-    response = llm.invoke(state["messages"])
+    messages = state["messages"]
+    
+    # Verificamos si el SystemMessage ya está en el historial para no duplicarlo
+    if not isinstance(messages[0], SystemMessage):
+        messages = [SystemMessage(content=INSTRUCCION_MAESTRA)] + messages
+        
+    response = llm.invoke(messages)
     return {"messages": [response]}
 
 def router_logic(state: AgentState):
