@@ -143,13 +143,17 @@ Reglas de operación obligatorias:
 4. Cita las especificaciones de torque, presión, ohmios o dosificación de fluidos con absoluta precisión matemática.
 """
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, google_api_key=GOOGLE_KEY).bind_tools(tools)
+# Al pasar INSTRUCCION_MAESTRA aquí, Gemini la procesa de forma nativa y segura
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash", 
+    temperature=0.1, 
+    google_api_key=GOOGLE_KEY,
+    system_instruction=INSTRUCCION_MAESTRA
+).bind_tools(tools)
 
 def call_model(state: AgentState):
-    messages = state["messages"]
-    if not any(isinstance(m, SystemMessage) for m in messages):
-        messages = [SystemMessage(content=INSTRUCCION_MAESTRA)] + messages
-    response = llm.invoke(messages)
+    # Ya no manipulamos ni alteramos el array de mensajes, evitando errores de sintaxis
+    response = llm.invoke(state["messages"])
     return {"messages": [response]}
 
 def router_logic(state: AgentState):
@@ -166,11 +170,13 @@ workflow.add_conditional_edges("agent", router_logic, {"execute_tools": "tools",
 workflow.add_edge("tools", "agent")
 agentic_graph = workflow.compile()
 
-# 6. ENTORNO DE CONVERSACIÓN INTERACTIVO
+# ==========================================
+# 6. ENTORNO DE CONVERSACIÓN INTERACTIVO (A PRUEBA DE CRASHES)
+# ==========================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Saludo visual (NO se envía al historial de Gemini)
+# Saludo visual estático
 if len(st.session_state.chat_history) == 0:
     with st.chat_message("assistant"):
         st.write("Sistema en línea conectado a Supabase. ¿Qué código de error o falla mecánica presenta el equipo?")
@@ -182,17 +188,27 @@ for message in st.session_state.chat_history:
         st.write(message.content)
 
 if user_input := st.chat_input("Ej: perdi fuerza de empuje en mi ditch witch"):
-    st.session_state.chat_history.append(HumanMessage(content=user_input))
     with st.chat_message("user"):
         st.write(user_input)
 
-    with st.chat_message("assistant"):
-        with st.spinner("Consultando base de datos vectorial en la nube..."):
-            inputs = {"messages": st.session_state.chat_history}
-            output = agentic_graph.invoke(inputs)
-            
-            st.session_state.chat_history = output["messages"]
-            raw_content = output["messages"][-1].content
-            
-            final_response = raw_content[0].get("text", "") if isinstance(raw_content, list) else raw_content
-            st.write(final_response)
+    # Creamos un respaldo para no corromper el historial si la API llega a fallar
+    respaldo_historial = list(st.session_state.chat_history)
+    
+    try:
+        with st.chat_message("assistant"):
+            with st.spinner("Consultando base de datos vectorial en la nube..."):
+                # Construimos la secuencia limpia para esta ejecución
+                mensajes_envio = respaldo_historial + [HumanMessage(content=user_input)]
+                inputs = {"messages": mensajes_envio}
+                output = agentic_graph.invoke(inputs)
+                
+                # Si la ejecución es exitosa, se actualiza el historial definitivo
+                st.session_state.chat_history = output["messages"]
+                raw_content = output["messages"][-1].content
+                
+                final_response = raw_content[0].get("text", "") if isinstance(raw_content, list) else raw_content
+                st.write(final_response)
+                
+    except Exception as e:
+        st.error(f"Error en la comunicación con el agente: {e}")
+        st.info("💡 Nota: Si el error persiste, recarga la pestaña del navegador para limpiar la memoria caché.")
