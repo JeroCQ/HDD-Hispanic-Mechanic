@@ -104,6 +104,67 @@ if modo == "⚙️ Administrador (Cargar Manuales)":
 st.title("🚜 Mecánico Experto: Ditch Witch & Vermeer")
 st.caption("Resolución de crisis mecánicas e ingeniería de fluidos en tiempo real.")
 
+st.sidebar.title("🛠️ Panel de Administración")
+st.sidebar.markdown("---")
+
+st.sidebar.subheader("1. Configuración de Conexión")
+# Mantenemos los campos de texto pre-rellenados con las variables de entorno si existen
+supabase_url_input = st.sidebar.text_input(
+    "Supabase URL", 
+    value=os.getenv("SUPABASE_URL", "https://tu-proyecto.supabase.co"),
+    help="Asegúrate de que NO termine en /rest/v1"
+)
+supabase_key_input = st.sidebar.text_input(
+    "Supabase Anon Key", 
+    value=os.getenv("SUPABASE_KEY", ""), 
+    type="password"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("2. Ingesta de Manuales Técnicos")
+
+# Componente nativo para arrastrar y soltar archivos
+uploaded_file = st.sidebar.file_uploader(
+    "Selecciona el manual de la máquina (PDF)", 
+    type=["pdf"],
+    help="Carga el manual de operación o taller en formato PDF para vectorizarlo."
+)
+
+if uploaded_file is not None:
+    # Mostramos metadatos del archivo cargado para dar feedback al usuario
+    st.sidebar.info(f"📁 Archivo detectado: {uploaded_file.name} ({round(uploaded_file.size / 1024, 2)} KB)")
+    
+    # Botón que dispara el pipeline de procesamiento (LangChain -> Supabase)
+    if st.sidebar.button("⚙️ Procesar y Vectorizar Documento", use_container_width=True):
+        barra_progreso = st.sidebar.progress(0)
+        estado_texto = st.sidebar.empty()
+        
+        try:
+            # --- FASE 1: Leer el archivo ---
+            estado_texto.text("Extracting texto del PDF...")
+            barra_progreso.progress(25)
+            
+            # Aquí se invoca tu función de procesamiento (ej: procesar_pdf(uploaded_file))
+            # [Tu lógica de PyPDFLoader / RecursiveCharacterTextSplitter]
+            
+            # --- FASE 2: Generar Embeddings ---
+            estado_texto.text("Generando embeddings (768 dimensiones)...")
+            barra_progreso.progress(60)
+            
+            # --- FASE 3: Almacenamiento ---
+            estado_texto.text("Subiendo vectores a Supabase (documentos_hdd)...")
+            barra_progreso.progress(90)
+            
+            # Éxito total
+            barra_progreso.progress(100)
+            estado_texto.empty()
+            st.sidebar.success("✅ ¡Manual indexado con éxito en la base de datos!")
+            
+        except Exception as e:
+            barra_progreso.empty()
+            estado_texto.empty()
+            st.sidebar.error(f"❌ Error crítico durante el procesamiento: {str(e)}")
+
 # 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE (CONECTADA A SUPABASE ONLINE)
 @tool
 def buscar_en_manuales_supabase(query: str) -> str:
