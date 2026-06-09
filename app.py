@@ -18,19 +18,19 @@ st.set_page_config(page_title="Mecánico HDD", layout="centered")
 # ==========================================
 # 2. CREDENCIALES COMPARTIDAS (OCULTAS AL USUARIO)
 # ==========================================
-# El sistema busca las claves internamente en el servidor. Cero inputs manuales.
+# El sistema busca las claves internamente de forma invisible. CERO inputs manuales en pantalla.
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     GOOGLE_KEY = st.secrets["GEMINI_API_KEY"]
 except (KeyError, FileNotFoundError):
-    # Fallback por si lo estás corriendo en local
+    # Fallback por si lo estás corriendo en tu computadora local
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
     SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
     GOOGLE_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
-    st.error("⚠️ El sistema está en mantenimiento. El administrador debe configurar los 'Secrets' en Streamlit Cloud.")
+    st.error("⚠️ El sistema no encuentra las credenciales. El administrador debe configurar los 'Secrets' en Streamlit Cloud.")
     st.stop()
 
 # Inicialización de clientes online
