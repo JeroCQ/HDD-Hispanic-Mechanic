@@ -133,7 +133,32 @@ def buscar_en_manuales_supabase(query: str) -> str:
     except Exception as e:
         return f"Error al buscar en la base de datos en la nube: {e}"
 
-tools = [buscar_en_manuales_supabase]
+@tool
+def listar_manuales_cargados() -> str:
+    """Útil ÚNICAMENTE cuando el usuario pregunta qué manuales, marcas o documentos tienes disponibles en tu base de datos."""
+    try:
+        # Hacemos un select ligero directo a la columna de metadata en Supabase
+        respuesta = supabase.table("documentos_hdd").select("metadata").execute()
+        
+        if not respuesta.data:
+            return "Actualmente no tienes ningún manual cargado en la base de datos."
+            
+        # Extraemos los nombres de los archivos usando un Set para no repetir
+        nombres_archivos = set()
+        for fila in respuesta.data:
+            if "metadata" in fila and "fuente" in fila["metadata"]:
+                nombres_archivos.add(fila["metadata"]["fuente"])
+                
+        if not nombres_archivos:
+            return "No se pudo identificar el nombre de los manuales."
+            
+        lista_manuales = "\n".join([f"- {nombre}" for nombre in nombres_archivos])
+        return f"Tengo acceso a los siguientes manuales en mi base de datos:\n{lista_manuales}"
+        
+    except Exception as e:
+        return f"Error al consultar el inventario de manuales: {e}"
+
+tools = [buscar_en_manuales_supabase, listar_manuales_cargados]
 tool_node = ToolNode(tools)
 
 # 5. ORQUESTACIÓN CON LANGGRAPH
@@ -147,6 +172,7 @@ Reglas de operación obligatorias:
 2. Si el usuario te habla en Spanglish de campo (ej. 'remer', 'drill rod', 'mordazas'), mapea internamente el término al inglés técnico.
 3. SIEMPRE basa tu diagnóstico en los fragmentos recuperados mediante tu herramienta de búsqueda. Si la respuesta no está en el contexto provisto por la herramienta, responde estrictamente: "Dato no disponible en los manuales cargados. Contacte a soporte de fábrica."
 4. Cita las especificaciones de torque, presión, ohmios o dosificación de fluidos con absoluta precisión matemática.
+5. NUNCA inventes manuales ni marcas que no estén en tu base de datos. Si te preguntan qué información tienes, usa SIEMPRE tu herramienta de listar manuales.
 """
 
 # Al pasar INSTRUCCION_MAESTRA aquí, Gemini la procesa de forma nativa y segura
