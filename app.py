@@ -16,106 +16,100 @@ import tempfile
 st.set_page_config(page_title="Mecánico HDD", layout="centered")
 
 # ==========================================
-# 2. CREDENCIALES COMPARTIDAS (TODO ONLINE)
+# 2. CREDENCIALES COMPARTIDAS (OCULTAS AL USUARIO)
 # ==========================================
-# Cuando despliegues en Streamlit Cloud, estas variables se configuran en "Secrets"
-SUPABASE_URL = os.environ.get("SUPABASE_URL") or st.sidebar.text_input("Supabase URL", type="default")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or st.sidebar.text_input("Supabase Anon Key", type="password")
-GOOGLE_KEY = os.environ.get("GEMINI_API_KEY") or st.sidebar.text_input("Gemini API Key", type="password")
+# El sistema busca las claves internamente en el servidor. Cero inputs manuales.
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    GOOGLE_KEY = st.secrets["GEMINI_API_KEY"]
+except (KeyError, FileNotFoundError):
+    # Fallback por si lo estás corriendo en local
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+    GOOGLE_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
-    st.info("⚠️ Por favor, ingresa las credenciales requeridas en la barra lateral para activar el sistema.")
+    st.error("⚠️ El sistema está en mantenimiento. El administrador debe configurar los 'Secrets' en Streamlit Cloud.")
     st.stop()
 
 # Inicialización de clientes online
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=GOOGLE_KEY, output_dimensionality=768)
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=GOOGLE_KEY, output_dimensionality=768)
 
 # ==========================================
-# 3. PANELES DE LA INTERFAZ (ADMINISTRACIÓN)
+# 3. PANELES DE LA INTERFAZ (CHAT vs ADMIN)
 # ==========================================
-st.sidebar.title("🛠️ Panel de Administración")
-st.sidebar.markdown("---")
+modo = st.sidebar.radio("Selecciona el Panel:", ["🤖 Copiloto de Campo (Chat)", "⚙️ Administrador (Cargar Manuales)"])
 
-st.sidebar.subheader("1. Ingesta de Manuales Técnicos")
-
-# Componente nativo para arrastrar y soltar archivos
-uploaded_file = st.sidebar.file_uploader(
-    "Selecciona el manual de la máquina (PDF)", 
-    type=["pdf"],
-    help="Carga el manual de operación o taller en formato PDF para vectorizarlo."
-)
-
-if uploaded_file is not None:
-    # Mostramos metadatos del archivo cargado para dar feedback al usuario
-    st.sidebar.info(f"📁 Archivo detectado: {uploaded_file.name} ({round(uploaded_file.size / 1024, 2)} KB)")
+# ------------------------------------------
+# PANEL DE ADMINISTRADOR: INGESTA 100% WEB
+# ------------------------------------------
+if modo == "⚙️ Administrador (Cargar Manuales)":
+    st.title("⚙️ Centro de Control de Conocimiento")
+    st.subheader("Nutre al agente subiendo nuevos manuales técnicos en PDF")
     
-    # Botón que dispara el pipeline de procesamiento (LangChain -> Supabase)
-    if st.sidebar.button("⚙️ Procesar y Vectorizar Documento", use_container_width=True):
-        barra_progreso = st.sidebar.progress(0)
-        estado_texto = st.sidebar.empty()
-        
-        try:
-            # --- FASE 1: Leer el archivo ---
-            estado_texto.text("Extrayendo texto del PDF...")
-            barra_progreso.progress(10)
-            
-            # Guardamos el archivo subido de Streamlit en un archivo temporal real del servidor
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
-            
-            # Usamos LangChain para leer el PDF
-            loader = PyPDFLoader(tmp_file_path)
-            documentos = loader.load()
-            
-            estado_texto.text("Dividiendo en fragmentos (Chunking)...")
-            barra_progreso.progress(30)
-            
-            # Cortamos el documento en pedazos de 1000 caracteres
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            chunks = text_splitter.split_documents(documentos)
-            
-            # --- FASE 2: Generar Embeddings ---
-            estado_texto.text(f"Vectorizando {len(chunks)} fragmentos...")
-            barra_progreso.progress(60)
-            
-            # Extraemos solo el texto para enviarlo a Gemini
-            textos = [chunk.page_content for chunk in chunks]
-            metadatos = [chunk.metadata for chunk in chunks]
-            
-            # Usamos embed_documents para procesar TODOS los fragmentos en una sola llamada (Evita el Rate Limit)
-            vectores = embeddings.embed_documents(textos)
-            
-            # --- FASE 3: Almacenamiento ---
-            estado_texto.text("Subiendo a Supabase...")
-            barra_progreso.progress(85)
-            
-            # Empaquetamos todo para Supabase
-            datos_a_insertar = []
-            for i in range(len(chunks)):
-                datos_a_insertar.append({
-                    "contenido": textos[i],
-                    "embedding": vectores[i],
-                    "metadata": metadatos[i]
-                })
-            
-            # Inserción masiva en la base de datos
-            supabase.table("documentos_hdd").insert(datos_a_insertar).execute()
-            
-            # Borramos el archivo temporal por limpieza
-            os.remove(tmp_file_path)
-            
-            # Éxito total
-            barra_progreso.progress(100)
-            estado_texto.empty()
-            st.sidebar.success(f"✅ ¡{len(chunks)} fragmentos indexados con éxito!")
-            
-        except Exception as e:
-            barra_progreso.empty()
-            estado_texto.empty()
-            st.sidebar.error(f"❌ Error crítico durante el procesamiento: {str(e)}")
-            
+    marca = st.selectbox("Marca del equipo o categoría:", ["Ditch Witch", "Vermeer", "Fluidos/Lodos", "Seguridad/Sistemas"])
+    archivo_subido = st.file_uploader("Arrastra aquí el manual en formato PDF", type=["pdf"])
+    
+    if archivo_subido is not None:
+        if st.button("🚀 Procesar y Alimentar Base de Datos"):
+            with st.spinner("Procesando PDF, fragmentando y generando embeddings con Gemini..."):
+                try:
+                    # Guardar el archivo subido en un directorio temporal online para que LangChain lo pueda leer
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        tmp_file.write(archivo_subido.getvalue())
+                        tmp_ruta = tmp_file.name
+
+                    # 1. Extraer texto del PDF
+                    loader = PyPDFLoader(tmp_ruta)
+                    paginas = loader.load()
+                    
+                    # 2. Chunking Semántico optimizado para datos de ingeniería
+                    text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
+                    chunks = text_splitter.split_documents(paginas)
+                    
+                    progreso = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # 3. Vectorización y carga online fila por fila a Supabase
+                    for i, chunk in enumerate(chunks):
+                        texto_limpio = chunk.page_content
+                        num_pagina = chunk.metadata.get("page", 0) + 1
+                        
+                        # Generar coordenadas matemáticas con Gemini
+                        vector = embeddings.embed_query(texto_limpio)
+                        
+                        # Guardar directo en la tabla que creamos en Supabase
+                        datos_fila = {
+                            "contenido": texto_limpio,
+                            "embedding": vector,
+                            "metadata": {
+                                "fuente": archivo_subido.name,
+                                "pagina": num_pagina,
+                                "marca": marca
+                            }
+                        }
+                        supabase.table("documentos_hdd").insert(datos_fila).execute()
+                        
+                        # Actualizar barra de progreso visual en la web
+                        porcentaje = int((i + 1) / len(chunks) * 100)
+                        progreso.progress(porcentaje)
+                        status_text.text(f"Subiendo fragmento {i+1} de {len(chunks)} (Pág. {num_pagina})")
+                    
+                    st.success(f"🏁 ¡Éxito! El manual '{archivo_subido.name}' fue fragmentado en {len(chunks)} partes y guardado permanentemente en la nube.")
+                    os.unlink(tmp_ruta) # Limpiar archivo temporal
+                    
+                except Exception as e:
+                    st.error(f"Error crítico durante el procesamiento: {e}")
+    st.stop() # Detiene la ejecución aquí si estás en modo admin
+
+# ------------------------------------------
+# PANEL DE USUARIO: COPILOTO INTELIGENTE RAG
+# ------------------------------------------
+st.title("🚜 Mecánico Experto: Ditch Witch & Vermeer")
+st.caption("Resolución de crisis mecánicas e ingeniería de fluidos en tiempo real.")
+
 # 4. CAPACIDAD DE BÚSQUEDA DEL AGENTE (CONECTADA A SUPABASE ONLINE)
 @tool
 def buscar_en_manuales_supabase(query: str) -> str:
