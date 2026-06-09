@@ -32,26 +32,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=GOOGLE_KEY, output_dimensionality=768)
 
 # ==========================================
-# 3. PANELES DE LA INTERFAZ (CHAT vs ADMIN)
+# 3. PANELES DE LA INTERFAZ (ADMINISTRACIÓN)
 # ==========================================
 st.sidebar.title("🛠️ Panel de Administración")
 st.sidebar.markdown("---")
 
-st.sidebar.subheader("1. Configuración de Conexión")
-# Mantenemos los campos de texto pre-rellenados con las variables de entorno si existen
-supabase_url_input = st.sidebar.text_input(
-    "Supabase URL", 
-    value=os.getenv("SUPABASE_URL", "https://tu-proyecto.supabase.co"),
-    help="Asegúrate de que NO termine en /rest/v1"
-)
-supabase_key_input = st.sidebar.text_input(
-    "Supabase Anon Key", 
-    value=os.getenv("SUPABASE_KEY", ""), 
-    type="password"
-)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("2. Ingesta de Manuales Técnicos")
+st.sidebar.subheader("1. Ingesta de Manuales Técnicos")
 
 # Componente nativo para arrastrar y soltar archivos
 uploaded_file = st.sidebar.file_uploader(
