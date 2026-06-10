@@ -25,11 +25,11 @@ st.set_page_config(page_title="Mecánico HDD", layout="centered")
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    GOOGLE_KEY = st.secrets["GEMINI_API_KEY"]
+    GOOGLE_KEY = st.secrets["_API_KEY"]
 except (KeyError, FileNotFoundError):
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
     SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-    GOOGLE_KEY = os.environ.get("GEMINI_API_KEY")
+    GOOGLE_KEY = os.environ.get("_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
     st.error("⚠️ El sistema no encuentra las credenciales. Configura los 'Secrets' en Streamlit Cloud.")
@@ -224,7 +224,7 @@ entrada_final = None
 if user_audio is not None and not user_text:
     with st.spinner("Escuchando y transcribiendo tu mensaje de voz con Gemini..."):
         # Transcripción del audio directamente con Gemini
-        modelo_transcriptor = genai.GenerativeModel('gemini-1.5-flash')
+        modelo_transcriptor = genai.GenerativeModel('gemini-3.5-flash')
         audio_bytes = user_audio.read()
         
         # Le enviamos el audio binario a Gemini para que lo convierta a texto
