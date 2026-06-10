@@ -13,8 +13,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
-# IMPORTANTE: Importamos genai puro para procesar el audio directamente con Gemini
-import google.generativeai as genai
+# LA NUEVA LIBRERÍA DE GOOGLE PARA EL AUDIO
+from google import genai
+from google.genai import types
 
 # 1. CONFIGURACIÓN VISUAL DE LA APP
 st.set_page_config(page_title="Mecánico HDD", layout="centered")
@@ -25,11 +26,11 @@ st.set_page_config(page_title="Mecánico HDD", layout="centered")
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-    GOOGLE_KEY = st.secrets["_API_KEY"]
+    GOOGLE_KEY = st.secrets["GEMINI_API_KEY"]
 except (KeyError, FileNotFoundError):
     SUPABASE_URL = os.environ.get("SUPABASE_URL")
     SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-    GOOGLE_KEY = os.environ.get("_API_KEY")
+    GOOGLE_KEY = os.environ.get("GEMINI_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
     st.error("⚠️ El sistema no encuentra las credenciales. Configura los 'Secrets' en Streamlit Cloud.")
@@ -38,7 +39,9 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GOOGLE_KEY:
 # Inicialización de clientes
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", google_api_key=GOOGLE_KEY, output_dimensionality=768)
-genai.configure(api_key=GOOGLE_KEY) # Configuración para el motor de audio
+
+# NUEVO CLIENTE DE AUDIO DE GEMINI
+genai_client = genai.Client(api_key=GOOGLE_KEY) 
 
 # ==========================================
 # 3. PANELES DE LA INTERFAZ
@@ -55,11 +58,10 @@ if modo == "⚙️ Administrador (Cargar Manuales)":
     clave_admin = st.text_input("🔑 Ingresa la contraseña de administrador:", type="password")
     
     if clave_admin != "juanfernandog":
-        if clave_admin: # Si escribió algo pero está mal
+        if clave_admin: 
             st.error("❌ Contraseña incorrecta. Acceso denegado.")
-        st.stop() # Detiene la ejecución aquí. No dibuja el resto de la interfaz.
+        st.stop()
         
-    # Si la contraseña es correcta, mostramos el uploader
     st.success("Acceso concedido.")
     st.subheader("Nutre al agente subiendo nuevos manuales técnicos en PDF")
     
@@ -218,20 +220,28 @@ for message in st.session_state.chat_history:
 user_text = st.chat_input("Ej: perdi fuerza de empuje en mi ditch witch")
 user_audio = st.audio_input("🎙️ O graba un mensaje de voz describiendo el problema")
 
-# Lógica para procesar la entrada del usuario (sea texto o voz)
+# Lógica para procesar la entrada del usuario
 entrada_final = None
 
 if user_audio is not None and not user_text:
     with st.spinner("Escuchando y transcribiendo tu mensaje de voz con Gemini..."):
-        # Transcripción del audio directamente con Gemini
-        modelo_transcriptor = genai.GenerativeModel('gemini-3.5-flash')
         audio_bytes = user_audio.read()
         
-        # Le enviamos el audio binario a Gemini para que lo convierta a texto
-        respuesta_audio = modelo_transcriptor.generate_content([
-            "Transcribe exactamente el problema técnico que el usuario describe en este audio. Solo devuelve el texto transcrito, sin saludos.",
-            {"mime_type": "audio/wav", "data": audio_bytes}
-        ])
+        instruccion_normalizacion = """
+        Eres un experto en maquinaria HDD. Transcribe el problema técnico del audio. 
+        Si el usuario usa términos en Spanglish, normalízalos a los términos técnicos estándar 
+        (ej: si dice 'mordazas' para el vise, mantén 'vise' o 'clamping jaws'). 
+        Devuelve solo el texto técnico resultante.
+        """
+        
+        # Procesamos el audio con el nuevo SDK de Gemini
+        respuesta_audio = genai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                instruccion_normalizacion,
+                types.Part.from_bytes(data=audio_bytes, mime_type='audio/wav')
+            ]
+        )
         
         entrada_final = respuesta_audio.text.strip()
         st.info(f"🗣️ **Transcripción:** {entrada_final}")
@@ -239,10 +249,10 @@ if user_audio is not None and not user_text:
 elif user_text:
     entrada_final = user_text
 
-# Ejecución del Agente si hay una entrada válida
+# Ejecución del Agente
 if entrada_final:
     with st.chat_message("user"):
-        if user_text: # Solo dibujamos si fue texto, el de audio ya se dibujó en el info()
+        if user_text: 
             st.write(entrada_final)
 
     respaldo_historial = list(st.session_state.chat_history)
