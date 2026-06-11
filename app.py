@@ -70,10 +70,11 @@ with tab_subir:
                     progreso = st.progress(0)
                     status_text = st.empty()
                     
-                    # Forzamos la inicialización EXACTA con el modelo verificado que sí te funciona
+                    # Forzamos la inicialización con el modelo verificado Y recortamos a 768 dimensiones
                     embeddings_preview = GoogleGenerativeAIEmbeddings(
                         model="gemini-embedding-2-preview", 
-                        google_api_key=GOOGLE_KEY
+                        google_api_key=GOOGLE_KEY,
+                        output_dimensionality=768  # <--- ESTA LÍNEA SOLUCIONA EL ERROR
                     )
                     
                     # Agrupamos en lotes pequeños de 15 fragmentos para cuidar la cuota del Free Tier
