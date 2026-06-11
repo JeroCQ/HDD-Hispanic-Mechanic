@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import tempfile
+import time
 from supabase import create_client, Client
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -44,16 +45,16 @@ st.success("Acceso concedido.")
 tab_subir, tab_gestionar = st.tabs(["📤 Cargar Manual", "🗑️ Gestionar Biblioteca"])
 
 # ==========================================
-# PESTAÑA 1: INGESTA ORIGINAL INTACTA
+# PESTAÑA 1: INGESTA OPTIMIZADA CON GEMINI 2 PREVIEW
 # ==========================================
 with tab_subir:
     st.subheader("Sube un nuevo manual en PDF para vectorizarlo")
-    marca = st.selectbox("Marca del equipo o categoría:", ["Ditch Witch", "Vermeer", "Fluidos/Lodos", "Seguridad/Sistemas"])
+    marca = st.selectbox("Marca del equipo o categoría:", ["Vermeer", "Ditch Witch", "Fluidos/Lodos", "Seguridad/Sistemas"])
     archivo_subido = st.file_uploader("Arrastra aquí el manual en formato PDF", type=["pdf"])
 
     if archivo_subido is not None:
         if st.button("🚀 Vectorizar y Subir a Supabase"):
-            with st.spinner("Fragmentando y generando embeddings..."):
+            with st.spinner("Fragmentando y generando embeddings con Gemini 2..."):
                 try:
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                         tmp_file.write(archivo_subido.getvalue())
@@ -62,33 +63,67 @@ with tab_subir:
                     loader = PyPDFLoader(tmp_ruta)
                     paginas = loader.load()
                     
+                    # Divisor adaptado para mantener un buen contexto técnico
                     text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
                     chunks = text_splitter.split_documents(paginas)
                     
                     progreso = st.progress(0)
                     status_text = st.empty()
                     
-                    for i, chunk in enumerate(chunks):
-                        texto_limpio = chunk.page_content
-                        num_pagina = chunk.metadata.get("page", 0) + 1
-                        vector = embeddings.embed_query(texto_limpio)
-                        
-                        datos_fila = {
-                            "contenido": texto_limpio,
-                            "embedding": vector,
-                            "metadata": {
-                                "fuente": archivo_subido.name,
-                                "pagina": num_pagina,
-                                "marca": marca
-                            }
-                        }
-                        supabase.table("documentos_hdd").insert(datos_fila).execute()
-                        
-                        porcentaje = int((i + 1) / len(chunks) * 100)
-                        progreso.progress(porcentaje)
-                        status_text.text(f"Subiendo fragmento {i+1} de {len(chunks)} (Pág. {num_pagina})")
+                    # Forzamos la inicialización EXACTA con el modelo verificado que sí te funciona
+                    embeddings_preview = GoogleGenerativeAIEmbeddings(
+                        model="gemini-embedding-2-preview", 
+                        google_api_key=GOOGLE_KEY
+                    )
                     
-                    st.success(f"🏁 ¡Éxito! El manual '{archivo_subido.name}' fue guardado permanentemente.")
+                    # Agrupamos en lotes pequeños de 15 fragmentos para cuidar la cuota del Free Tier
+                    TAMAÑO_LOTE = 15
+                    
+                    for i in range(0, len(chunks), TAMAÑO_LOTE):
+                        lote_chunks = chunks[i:i + TAMAÑO_LOTE]
+                        textos_lote = [chunk.page_content for chunk in lote_chunks]
+                        
+                        try:
+                            # Generación masiva usando el modelo correcto
+                            vectores_lote = embeddings_preview.embed_documents(textos_lote)
+                            
+                            filas_supabase = []
+                            for j, chunk in enumerate(lote_chunks):
+                                num_pagina = chunk.metadata.get("page", 0) + 1
+                                datos_fila = {
+                                    "contenido": chunk.page_content,
+                                    "embedding": vectores_lote[j],
+                                    "metadata": {
+                                        "fuente": archivo_subido.name,
+                                        "pagina": num_pagina,
+                                        "marca": marca
+                                    }
+                                }
+                                filas_supabase.append(datos_fila)
+                            
+                            # Subida en bloque a Supabase
+                            supabase.table("documentos_hdd").insert(filas_supabase).execute()
+                            
+                            # Cálculo visual del progreso
+                            ultimo_indice_procesado = min(i + TAMAÑO_LOTE, len(chunks))
+                            porcentaje = int(ultimo_indice_procesado / len(chunks) * 100)
+                            progreso.progress(porcentaje)
+                            status_text.text(f"⚡ Procesados {ultimo_indice_procesado} de {len(chunks)} fragmentos (Pág. {num_pagina})...")
+                            
+                            # Pausa obligatoria de 3 segundos para resetear la cuota por minuto de la API
+                            time.sleep(3)
+                            
+                        except Exception as error_api:
+                            # Si la API se satura temporalmente, el sistema se defiende solo y espera
+                            if "429" in str(error_api) or "RESOURCE_EXHAUSTED" in str(error_api):
+                                status_text.text("⚠️ Límite de ráfaga alcanzado. Enfriando motor por 12 segundos...")
+                                time.sleep(12)
+                                # Decrementamos el índice para volver a intentar este bloque exacto
+                                i -= TAMAÑO_LOTE
+                            else:
+                                raise error_api
+                    
+                    st.success(f"🏁 ¡Éxito rotundo! El manual '{archivo_subido.name}' está completamente indexado.")
                     os.unlink(tmp_ruta)
                     
                 except Exception as e:
